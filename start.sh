@@ -8,7 +8,7 @@ while getopts i:b:o:f:d: flag
 do
     case "${flag}" in
         i) input=${OPTARG};;
-	b) inputb=${OPTARG};;
+        b) inputb=${OPTARG};;
         o) output=${OPTARG};;
         f) format=${OPTARG};;
         d) delay=${OPTARG};;
@@ -23,7 +23,7 @@ then
 fi
 if [ -z "$inputb" ]
 then
-   echo "Please provide an input, for example ./start.sh -i video.mp4"
+   echo "Please provide a secondary input, for example ./start.sh -i video.mp4"
    echo "Example: ./start.sh -i rtmps://input-url/live/1234 -o rtmps://output-url/live/1234 -f flv -d 1.5"
    exit
 fi
