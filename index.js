@@ -64,11 +64,15 @@ const backPressure = 1.5; // this means it will run 1.2x faster
 const forwardPressure = 1; // wait 1 second for transcribe before generating SRT
 const sleepForDuration = true; // sleep for entire file duration before generating SRT?
 
+const INITIAL_SNAPPING_DELAY = 7; // Maximum allowed waiting time after receiving the audio utterance before emitting transcript.
+const SNAPPING_LENGTH = 5; // Snapping Batch output length.
+
 /* Variables */
 const transcripts = [];
 let currentSegment = -1;
 let currentTranscriptSegment;
 let currentTranscriptCuts = 0;
+let snappedPartials = [];
 
 let totalCaptions = 0;
 
@@ -325,6 +329,114 @@ if (argv('stdin')) {
   });
 }
 
+
+/* Snapping */
+
+function itemsToTranscript(items) {
+  /*
+    itemsToTranscript() joins the Items in the form of words and punctuation to form a Transcript.
+    Args:
+        items: Object[] - Each items contains Content and a Type ("pronunciation" | "punctuation").
+    Returns:
+        snappedTranscript: string : Joined trasncript from Items.
+  */
+
+  if (items.length === 0) return "";
+  let snappedTranscript = items[0].Content; // Initialise Transcript.
+  items.slice(1).forEach((item) => {
+      if (item.Type !== "punctuation") { // If item is pronunciation (word), join by spaces. Punctuation does not require a preceding space.
+          snappedTranscript += " ";
+      }
+      snappedTranscript += item.Content;
+  });
+  return snappedTranscript;
+}
+
+function snapping(TranscribeStreamData) {
+
+  /*
+    snapping() receives Transcribe Streaming Data and applies Transform according to Snapping Logic.
+    Args:
+        None: To be integrated in a Piepeline where it receives TranscribeStreamData.
+    Returns:
+        TranscribeStreamData: Transformed.
+  */
+  // Keep Record of Snapped Fragments. Cleared after each Result is Complete according to Transcribe.
+  //const snappedPartials = [];
+  if (!TranscribeStreamData.Transcript.Results.length) {
+      return [];
+  }
+  try {
+      const result = TranscribeStreamData.Transcript.Results[0];
+      const snapStartTime =
+          result.StartTime + snappedPartials.length * SNAPPING_LENGTH;
+      const snapEndTime = snapStartTime + SNAPPING_LENGTH;
+      const snapTriggerTime =
+          result.StartTime +
+          INITIAL_SNAPPING_DELAY +
+          snappedPartials.length * SNAPPING_LENGTH;
+
+      if (result.IsPartial) {
+          if (snapTriggerTime > result.EndTime) {
+              // Don't need to Snap.
+              // But need to remove previously snapped items where applicable.
+              const itemsToSnap = result.Alternatives[0].Items.filter(
+                  (item) => item.StartTime >= snapStartTime
+              );
+
+              // Modify Result:
+              result.Alternatives[0].Items = itemsToSnap;
+              result.Alternatives[0].Transcript = itemsToTranscript(itemsToSnap);
+              result.StartTime = itemsToSnap[0]?.StartTime ?? result.StartTime;
+          } else {
+              // Should Snap!
+              // The current partial will get status "non partial" - This informs the Real-Time subtitling mechanism to pass it forward.
+              const itemsToSnap = result.Alternatives[0].Items.filter(
+                  (item) =>
+                      item.StartTime >= snapStartTime && item.StartTime < snapEndTime
+              );
+
+              // Modify Result:
+              result.Alternatives[0].Items = itemsToSnap;
+              result.Alternatives[0].Transcript = itemsToTranscript(itemsToSnap);
+              result.ResultId = `${result.ResultId}-SNAP${snappedPartials.length}`; // Assign a unique ResultId
+              result.IsPartial = false;
+              result.StartTime = itemsToSnap[0]?.StartTime ?? result.StartTime;
+              result.EndTime = itemsToSnap.length !== 0 ? itemsToSnap[itemsToSnap.length - 1].EndTime : result.EndTime;
+
+              // Keep record of Emitted Snapped Segments
+              snappedPartials.push(result);
+          }
+      } else {
+          // Handle Non-Partial
+          const lastSnappedItem = snappedPartials
+              .slice(-1)[0]
+              ?.Alternatives[0].Items.slice(-1)[0];
+          const itemsToSnap = result.Alternatives[0].Items.filter(
+              // NOTE: Timings change very slightly upon completion of a phrase (See Limitations section).
+              // If snapping was active, we want to ensure to only publish items where the start time is after the last snapped item's endtime.
+              (item) =>
+                  item.StartTime >=
+                  Math.max(snapStartTime, lastSnappedItem?.EndTime ?? 0)
+          );
+
+          // Modify Result:
+          result.Alternatives[0].Items = itemsToSnap;
+          result.Alternatives[0].Transcript = itemsToTranscript(itemsToSnap);
+          result.StartTime = itemsToSnap[0].StartTime;
+
+          // Clear Snapped Items Record:
+          snappedPartials.length = 0;
+      }
+      return result;
+  } catch (err) {
+      console.error(err);
+  };
+};
+
+
+
+
 /* Configure Transcribe */
 const audioStream = async function* audioStream() {
   try {
@@ -356,21 +468,25 @@ const startTranscribe = async function startTranscribe() {
     for await (const chunk of tsStream) {
       // console.log(JSON.stringify(chunk));
       if (chunk.TranscriptEvent.Transcript.Results.length > 0) {
+
+        const transcriptResult = snapping(chunk.TranscriptEvent);
+
         const transcript = {
-          StartTime: chunk.TranscriptEvent.Transcript.Results[0].StartTime,
-          EndTime: chunk.TranscriptEvent.Transcript.Results[0].EndTime,
-          IsPartial: chunk.TranscriptEvent.Transcript.Results[0].IsPartial,
+          StartTime: transcriptResult.StartTime,
+          EndTime: transcriptResult.EndTime,
+          IsPartial: transcriptResult.IsPartial,
         };
 
         // split transcript into two lines
-        const text = chunk.TranscriptEvent.Transcript.Results[0].Alternatives[0].Transcript;
+        const text = transcriptResult.Alternatives[0].Transcript;
+
         const lines = srt.splitIntoChunks(text);
 
-        if (lines.length > 2) {
+        if (lines.length > 4) {
           // we got a situation where we gotta save and break the
           // transcript into two segments
           console.log('TODO - extra long line we gotta deal with');
-          currentTranscriptCuts += Math.floor(lines.length / 2);
+          currentTranscriptCuts += Math.floor(lines.length / 4);
         }
 
         transcript.Transcript = {
