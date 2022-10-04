@@ -40,6 +40,8 @@ const argv = require('./argv');
 /* Constants */
 const REGION = 'us-west-2';
 const isFifo = argv('fifo');
+const customVocab = argv('cv');
+const clm = argv('clm');
 const relativeTime = (!isFifo); // if true, the timestamps will be zeroed every file
 const fifoFileName = (isFifo && argv('fifo').length > 0 ? isFifo : 'fifo_srt');
 const mediaStoreEndpoint = (argv('mediaStoreEndpoint') ? argv('mediaStoreEndpoint') : '');
@@ -458,6 +460,12 @@ const startTranscribe = async function startTranscribe() {
     MediaSampleRateHertz: sampleRate,
     AudioStream: audioStream(),
   };
+  if (customVocab) {
+    tsParams.VocabularyName = customVocab;
+  }
+  if (clm) {
+    tsParams.LanguageModelName = clm;
+  }
 
   const tsCmd = new StartStreamTranscriptionCommand(tsParams);
   const tsResponse = await tsClient.send(tsCmd);
