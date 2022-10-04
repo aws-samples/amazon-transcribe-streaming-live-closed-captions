@@ -18,10 +18,11 @@ This project requires nodejs 16+ and cmake build tools.
 ### Running
 
 There is a bash script `start.sh` to start up all the components. The 4 parameters are:
-1. `-i input_url`, input/source stream url
-2. `-d destination_url`, the output/destination stream url
-3. `-f format`, the output/destination format. If RTMP, then use flv
-4. `-d delay`, the delay to add to the video to sync up the subtitles
+1. `-i input_url`, input/source 1 stream url
+2. `-b input_url`, input/source 2 stream url (may be same as input 1, or different)
+3. `-d destination_url`, the output/destination stream url
+4. `-f format`, the output/destination format. If RTMP, then use flv
+5. `-d delay`, the delay to add to the video to sync up the subtitles
 
 `chmod +x start.sh` 
-`./start.sh -i rtmps://input-url/live/1234 -o rtmps://output-url/live/1234 -f flv -d 1.5`
+`./start.sh -i rtmps://input-url/live/1234 -b rtmps://input-url/live/1234 -o rtmps://output-url/live/1234 -f flv -d 1.5`
