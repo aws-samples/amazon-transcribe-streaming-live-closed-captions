@@ -49,5 +49,5 @@ if [ ! -p transcript_fifo ]
 then
    mkfifo transcript_fifo
 fi
-ffmpeg -itsoffset $delay -loglevel quiet -re -thread_queue_size 1024 -sn -i $inputb -c:v libx264 -profile:v main -preset veryfast -g 120 -x264opts "nal-hrd=cbr:no-scenecut" -acodec aac -ab 160k -ar 44100 -f flv - | flv+srt - transcript_fifo - | ffmpeg -loglevel quiet -y -i - -c:v copy -c:a copy -metadata:s:s:0 language=eng -f $format $output &
-ffmpeg -loglevel quiet -re -i $input -vn -ac 1 -c:a pcm_s16le -ar 16000 -f wav - | node index.js --fifo=transcript_fifo --stdin=true &
+nohup ffmpeg -itsoffset $delay -loglevel quiet -re -thread_queue_size 1024 -sn -i $inputb -c:v copy -acodec aac -ab 160k -ar 44100 -f flv - | flv+srt - transcript_fifo - | nohup ffmpeg -loglevel quiet -y -i - -c:v copy -c:a copy -metadata:s:s:0 language=eng -f $format $output &
+nohup ffmpeg -loglevel quiet -re -i $input -vn -ac 1 -c:a pcm_s16le -ar 16000 -f wav - | node index.js --fifo=transcript_fifo --stdin=true &
