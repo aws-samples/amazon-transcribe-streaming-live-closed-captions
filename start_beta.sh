@@ -55,7 +55,7 @@ fi
 
 # Using ports 7000, 7001, 7002 for stream replication
 # Convert input to a transport stream (TS)
-ffmpeg -i $input 0c:v copy -c:a copy -f mpegts udp://127.0.0.1:7000
+ffmpeg -i $input -c:v copy -c:a copy -f mpegts udp://127.0.0.1:7000
 
 # Use tsduck command line (tsp) 
 tsp -i ip udp://127.0.0.1:7000 -P fork 'tsp -P regulate -O ip 127.0.0.1:7001' -P timeshift --directory /tmp/ --time $delay -P regulate -O ip 127.0.0.1:7002
