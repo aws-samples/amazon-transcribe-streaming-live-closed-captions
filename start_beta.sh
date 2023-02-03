@@ -44,7 +44,7 @@ then
 fi
 if [ -z "$delay" ]
 then
-   echo "Please provide an output video delay in seconds, for example, for 1.5 second video delay: ./start.sh -d 1.5"
+   echo "Please provide an output video delay in milliseconds, for example, for 1.5 second video delay: ./start.sh -d 1500"
    echo "Example: ./start.sh -i rtmps://input-url/live/1234 -b rtmps://input-url/live/1234 -o rtmps://output-url/live/1234 -f flv -d 1.5"
    exit
 fi
