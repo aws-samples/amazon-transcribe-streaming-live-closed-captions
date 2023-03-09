@@ -45,9 +45,10 @@ then
    echo "Example: ./start.sh -i rtmps://input-url/live/1234 -b rtmps://input-url/live/1234 -o rtmps://output-url/live/1234 -f flv -d 1.5"
    exit
 fi
+cd /transcribe
 if [ ! -p transcript_fifo ]
 then
    mkfifo transcript_fifo
 fi
-nohup ffmpeg -itsoffset $delay -loglevel quiet -re -thread_queue_size 1024 -sn -i $inputb -c:v copy -acodec aac -ab 160k -ar 44100 -f flv - | flv+srt - transcript_fifo - | nohup ffmpeg -loglevel quiet -y -i - -c:v copy -c:a copy -metadata:s:s:0 language=eng -f $format $output &
-nohup ffmpeg -loglevel quiet -re -i $input -vn -ac 1 -c:a pcm_s16le -ar 16000 -f wav - | node index.js --fifo=transcript_fifo --stdin=true &
+ffmpeg -loglevel quiet -re -sn -i $inputb -c:v copy -c:a copy -f flv - | flv+srt - transcript_fifo - | ffmpeg -loglevel quiet -y -i - -c:v copy -c:a copy -metadata:s:s:0 language=eng -f $format $output &
+ffmpeg -loglevel quiet -re -i $input -vn -ac 1 -c:a pcm_s16le -ar 16000 -f wav - | node index.js --fifo=transcript_fifo --stdin=true 
