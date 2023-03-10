@@ -14,10 +14,10 @@ Parameters:
     Description: Name of existing EC2 Keypair. If you leave this blank, you will only have SSH access via the console.
     Type: String
   ExistingSubnetId:
-    Description: ID if an existing subnet. If you leave this blank, a new VPC and subnet will be created.
+    Description: ID of an existing subnet. If you leave this blank, a new VPC and subnet will be created.
     Type: String
   ExistingSecurityGroupId:
-    Description: ID if an existing security group. If you leave this blank, a new security group will be created.
+    Description: ID of an existing security group. If you leave this blank, a new security group will be created.
     Type: String
   SourceVideoCIDR:
     Description: CIDR block or ip for source video, used for a new security group only. (ex. x.x.x.x/32 for single IP)

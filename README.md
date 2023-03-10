@@ -34,7 +34,7 @@ CloudFormation parameter, SourceVideoCIDR is required.
 
 In the CloudFormation outputs, there is an `RTMPEndpoint` that you can use to publish RTMP video to using a tool such as OBS.
 
-If you entered a SourceVideoCIDR, that CIDR range will be open on the security group on port 22 and 1935 so that you may SSH and also RTMP push video to the EC2 instance.
+If you entered a `SourceVideoCIDR`, that CIDR range will be open on the security group on port 22 and 1935 so that you may SSH and also RTMP push video to the EC2 instance.
 
 When a video publish begins, the [Nginx RTMP module](https://github.com/arut/nginx-rtmp-module) will execute a shell script that has been pre-installed on the EC2 instance. This script kicks off a video production workflow to inject subtitles, using [ffmpeg](https://ffmpeg.org), [NodeJS](https://nodejs.org), and a modified version of [libcaption](https://github.com/szatmary/libcaption) that is hosted in this repo.
 
