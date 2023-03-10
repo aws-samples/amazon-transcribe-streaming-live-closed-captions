@@ -1,0 +1,317 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Amazon Transcribe Streaming Live Subtitling
+
+Parameters:
+  IVSChannelName:
+    Description: Name of the IVS Channel
+    Type: String
+  LatestImageId:
+    Description: Ubuntu Linux Image Id. Leave blank for default, which is ami-0557a15b87f6559cf
+    Type: AWS::EC2::Image::Id
+    Default: ami-0557a15b87f6559cf
+  EC2KeyPairName:
+    Description: Name of existing EC2 Keypair. If you leave this blank, you will only have SSH access via the console.
+    Type: String
+  ExistingSubnetId:
+    Description: ID if an existing subnet. If you leave this blank, a new VPC and subnet will be created.
+    Type: String
+  ExistingSecurityGroupId:
+    Description: ID if an existing security group. If you leave this blank, a new security group will be created.
+    Type: String
+  SourceVideoCIDR:
+    Description: CIDR block or ip for source video, used for a new security group only. (ex. x.x.x.x/32 for single IP)
+    Type: String
+    AllowedPattern: ^([0-9]{1,3}.){3}[0-9]{1,3}(/([0-9]|[1-2][0-9]|3[0-2]))$||""
+    ConstraintDescription: Must be a valid public CIDR block in the form x.x.x.x/y
+
+Conditions:
+  CreateNetwork: !Equals [!Ref ExistingSubnetId, '']
+  SourceCIDRExists: !Not [!Equals [!Ref SourceVideoCIDR, '']]
+  ChannelNameExists: !Not [!Equals [!Ref IVSChannelName, '']]
+  KeyPairExists: !Not [!Equals [!Ref EC2KeyPairName, '']]
+
+Resources:
+
+  ###################################
+  # Networking
+  ###################################
+  SubtitlingVPC:
+    Condition: CreateNetwork
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: TranscribeSubtitling/VPC
+  SubtitlingSubnet1:
+    Condition: CreateNetwork
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      VpcId:
+        Ref: SubtitlingVPC
+      AvailabilityZone:
+        Fn::Select:
+          - 0
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: aws-cdk:subnet-name
+          Value: Subtitling
+        - Key: aws-cdk:subnet-type
+          Value: Public
+        - Key: Name
+          Value: TranscribeSubtitling/VPC/SubtitlingSubnet1
+  SubtitlingSubnet1RouteTable:
+    Condition: CreateNetwork
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: SubtitlingVPC
+      Tags:
+        - Key: Name
+          Value: TranscribeSubtitling/VPC/SubtitlingSubnet1
+  SubtitlingSubnet1RouteTableAssociation:
+    Condition: CreateNetwork
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: SubtitlingSubnet1RouteTable
+      SubnetId:
+        Ref: SubtitlingSubnet1
+  SubtitlingSubnet1DefaultRoute:
+    Condition: CreateNetwork
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: SubtitlingSubnet1RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VPCInternetGateway
+    DependsOn:
+      - VPCGatewayAttachment
+  SubtitlingSubnet2:
+    Condition: CreateNetwork
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      VpcId:
+        Ref: SubtitlingVPC
+      AvailabilityZone:
+        Fn::Select:
+          - 1
+          - Fn::GetAZs: ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: aws-cdk:subnet-name
+          Value: Subtitling
+        - Key: aws-cdk:subnet-type
+          Value: Public
+        - Key: Name
+          Value: TranscribeSubtitling/VPC/SubtitlingSubnet2
+  SubtitlingSubnet2RouteTable:
+    Condition: CreateNetwork
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: SubtitlingVPC
+      Tags:
+        - Key: Name
+          Value: TranscribeSubtitling/VPC/SubtitlingSubnet2
+  SubtitlingSubnet2RouteTableAssociation:
+    Condition: CreateNetwork
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: SubtitlingSubnet2RouteTable
+      SubnetId:
+        Ref: SubtitlingSubnet2
+  SubtitlingSubnet2DefaultRoute:
+    Condition: CreateNetwork
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: SubtitlingSubnet2RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: VPCInternetGateway
+    DependsOn:
+      - VPCGatewayAttachment
+  VPCInternetGateway:
+    Condition: CreateNetwork
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: TranscribeSubtitling/VPC
+  VPCGatewayAttachment:
+    Condition: CreateNetwork
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: SubtitlingVPC
+      InternetGatewayId:
+        Ref: VPCInternetGateway
+  SubtitlingSecurityGroup:
+    Condition: CreateNetwork
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Subtitling Server
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: '-1'
+      SecurityGroupIngress:
+        - CidrIp: 
+            !If [SourceCIDRExists, !Ref SourceVideoCIDR, !Ref 'AWS::NoValue']
+          Description: Allow RTMP Access
+          FromPort: 1935
+          IpProtocol: tcp
+          ToPort: 1935
+        - CidrIp:
+            !If [SourceCIDRExists, !Ref SourceVideoCIDR, !Ref 'AWS::NoValue']
+          Description: SSH Access
+          FromPort: 22
+          IpProtocol: tcp
+          ToPort: 22
+      VpcId:
+        Ref: SubtitlingVPC
+
+
+  ###################################
+  # IAM Roles / Instance Profile
+  ###################################
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: !Sub 'ec2.${AWS::URLSuffix}'
+        Version: '2012-10-17'
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonTranscribeFullAccess'
+  # add permissions for EC2
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - Ref: InstanceRole
+ 
+  ###################################
+  # Amazon IVS
+  ###################################
+  IVSChannel:
+    Type: AWS::IVS::Channel
+    Properties:
+      Name: !If [ChannelNameExists, !Ref IVSChannelName, !Ref 'AWS::StackName']
+      Tags:
+        - 
+          Key: "Name"
+          Value: "TranscribeSubtitling/IVSChannel"
+  StreamKey:
+    Type: AWS::IVS::StreamKey
+    Properties:
+      ChannelArn: !Ref IVSChannel
+      Tags:
+        - 
+          Key: "Name"
+          Value: "TranscribeSubtitling/IVSStreamKey"
+  ###################################
+  # EC2 Instance
+  ###################################
+  EC2Instance:
+      Type: AWS::EC2::Instance
+      Properties:
+          ImageId: !Ref LatestImageId
+          InstanceType: "t2.large"
+          KeyName: !If [KeyPairExists, !Ref EC2KeyPairName, !Ref 'AWS::NoValue']
+          AvailabilityZone:
+            Fn::Select:
+              - 0
+              - Fn::GetAZs: ''
+          Tenancy: "default"
+          SubnetId: !If [CreateNetwork, !Ref SubtitlingSubnet1, !Ref ExistingSubnetId]
+          EbsOptimized: false
+          SecurityGroupIds: 
+            - !If [CreateNetwork, !GetAtt [SubtitlingSecurityGroup, GroupId], !Ref ExistingSecurityGroupId]
+          SourceDestCheck: true
+          BlockDeviceMappings: 
+            - 
+              DeviceName: "/dev/sda1"
+              Ebs: 
+                  Encrypted: false
+                  VolumeSize: 64
+                  # SnapshotId: "snap-0e7030345d3ce3139"
+                  VolumeType: "gp3"
+                  DeleteOnTermination: true
+          IamInstanceProfile:
+            Ref: InstanceProfile
+          Tags: 
+            - 
+              Key: "Name"
+              Value: "TranscribeSubtitling/EC2Instance"
+          HibernationOptions: 
+              Configured: false
+          EnclaveOptions: 
+              Enabled: false
+          UserData:
+            Fn::Base64: !Sub |
+              #!/bin/bash
+              apt update 
+              apt install -y libnginx-mod-rtmp
+              echo "
+              rtmp {
+                server {
+                  listen 1935;
+                  chunk_size 4096;
+                  # allow publish 127.0.0.1;
+                  # deny publish all;
+                  application live {
+                    live on;
+                    record off;
+                    exec_push /transcribe/start.sh -i rtmp://127.0.0.1:1935/live/\$name -b rtmp://127.0.0.1:1935/live/\$name -o rtmps://${IVSChannel.IngestEndpoint}:443/app/${StreamKey.Value} -f flv -d 1.5;
+                    exec_kill_signal term;
+                  }
+                }
+              }" >> /etc/nginx/nginx.conf
+              ufw allow 1935/tcp
+              ufw allow ssh
+              systemctl reload nginx.service
+              apt install -y python3-pip
+              apt install -y ffmpeg
+              apt install -y curl
+              apt install -y acl
+              cd ~
+              curl -fsSL https://deb.nodesource.com/setup_16.x | bash -
+              apt install -y nodejs
+              apt install build-essential -y
+              apt install -y cmake
+              cd /
+              git clone https://github.com/aws-samples/amazon-transcribe-streaming-live-closed-captions transcribe
+              setfacl -R -m u:www-data:rwx /transcribe
+              cd /transcribe
+              chmod +x start.sh
+              npm install
+              cd libcaption
+              cmake . && make
+              make install
+
+Outputs:
+  RTMPEndpoint:
+    Value: !Sub 'rtmp://${EC2Instance.PublicIp}/live/a'
+  ChannelIngestEndpoint:
+    Value: !GetAtt IVSChannel.IngestEndpoint
+  ChannelPlaybackUrl:
+    Value: !GetAtt IVSChannel.PlaybackUrl
+  StreamKey:
+    Value: !GetAtt StreamKey.Value
+  StartCommand:
+    Value: !Sub ./start.sh -i rtmp://127.0.0.1:1935/live/a -b rtmp://127.0.0.1:1935/live/a -o rtmps://${IVSChannel.IngestEndpoint}:443/app/${StreamKey.Value} -f flv -d 1.5
