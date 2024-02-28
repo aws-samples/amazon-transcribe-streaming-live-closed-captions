@@ -285,7 +285,7 @@ Resources:
               }" >> /etc/nginx/nginx.conf
               ufw allow 1935/tcp
               ufw allow ssh
-              systemctl reload nginx.service
+              systemctl restart nginx
               apt install -y python3-pip
               apt install -y ffmpeg
               apt install -y curl
