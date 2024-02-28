@@ -266,6 +266,7 @@ Resources:
             Fn::Base64: !Sub |
               #!/bin/bash
               apt update 
+              apt install -y nginx
               apt install -y libnginx-mod-rtmp
               echo "
               rtmp {
